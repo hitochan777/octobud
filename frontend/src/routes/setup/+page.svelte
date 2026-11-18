@@ -28,6 +28,7 @@
 	import {
 		updateSyncSettings,
 		getGitHubStatus,
+		connectGitHubCLI,
 		setGitHubToken,
 		clearGitHubToken,
 		type GitHubStatus,
@@ -47,6 +48,7 @@
 	// GitHub connection state
 	let githubStatus: GitHubStatus | null = null;
 	let isConnectingOAuth = false;
+	let isConnectingCLI = false;
 	let oauthUserCode = "";
 	let isClearingToken = false;
 	let connectionError = "";
@@ -105,6 +107,19 @@
 			isLoading = false;
 		}
 	});
+
+	async function handleConnectWithCLI() {
+		connectionError = "";
+		isConnectingCLI = true;
+		try {
+			await connectGitHubCLI();
+			await loadGitHubStatus();
+		} catch (err) {
+			connectionError = err instanceof Error ? err.message : "Failed to connect with GitHub CLI";
+		} finally {
+			isConnectingCLI = false;
+		}
+	}
 
 	async function handleConnectWithGitHub() {
 		connectionError = "";
@@ -349,6 +364,8 @@
 											Connected via GitHub
 										{:else if githubStatus.source === "stored"}
 											Connected via token
+										{:else if githubStatus.source === "gh"}
+											Connected via GitHub CLI
 										{/if}
 									</p>
 								</div>
@@ -418,7 +435,6 @@
 							</button>
 						</div>
 					{:else}
-						<!-- Not connected state - OAuth and PAT as equal options -->
 						<div class="space-y-6">
 							{#if connectionError}
 								<div
@@ -427,6 +443,20 @@
 									{connectionError}
 								</div>
 							{/if}
+
+							<div class="text-center">
+								<button
+									type="button"
+									on:click={handleConnectWithCLI}
+									disabled={isConnectingCLI || isValidatingToken}
+									class="w-full rounded-xl border border-gray-300 px-7 py-3.5 text-sm font-semibold text-gray-900 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:text-white dark:hover:bg-gray-800"
+								>
+									{isConnectingCLI ? "Connecting..." : "Connect with GitHub CLI"}
+								</button>
+								<p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+									Use an existing <code>gh auth login</code> on this computer.
+								</p>
+							</div>
 
 							<div class="text-center py-2">
 								<!-- PAT Option (Recommended) -->
@@ -545,7 +575,7 @@
 												<button
 													type="button"
 													on:click={handleSetToken}
-													disabled={isValidatingToken || !tokenInput.trim()}
+													disabled={isValidatingToken || isConnectingCLI || !tokenInput.trim()}
 													class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
 												>
 													{#if isValidatingToken}
@@ -591,6 +621,7 @@
 									<button
 										type="button"
 										on:click={handleConnectWithGitHub}
+										disabled={isConnectingCLI || isValidatingToken}
 										class="w-full inline-flex items-center justify-center gap-3 rounded-xl bg-gray-900 dark:bg-white px-7 py-3.5 text-sm font-semibold text-white dark:text-gray-900 transition-all hover:bg-gray-800 dark:hover:bg-gray-100 cursor-pointer shadow-sm hover:shadow-md"
 									>
 										<svg

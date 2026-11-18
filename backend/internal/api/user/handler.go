@@ -85,6 +85,7 @@ type TokenManagerInterface interface {
 	IsConnected() bool
 	SetToken(ctx context.Context, token string) (string, error)
 	SetTokenFromOAuth(ctx context.Context, token string) (string, error)
+	ConnectGitHubCLI(ctx context.Context) (string, error)
 	ClearToken(ctx context.Context) error
 }
 
@@ -127,6 +128,7 @@ func (h *Handler) Register(r chi.Router) {
 		// GitHub token management
 		r.Get("/github-status", h.HandleGetGitHubStatus)
 		r.Put("/github-token", h.HandleSetGitHubToken)
+		r.Put("/github-cli", h.HandleConnectGitHubCLI)
 		r.Delete("/github-token", h.HandleClearGitHubToken)
 
 		// Storage management
@@ -276,6 +278,26 @@ func (h *Handler) HandleSetGitHubToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	helpers.WriteJSON(w, http.StatusOK, response)
+}
+
+// HandleConnectGitHubCLI handles PUT /api/user/github-cli.
+func (h *Handler) HandleConnectGitHubCLI(w http.ResponseWriter, r *http.Request) {
+	if h.tokenManager == nil {
+		helpers.WriteError(
+			w,
+			http.StatusServiceUnavailable,
+			"GitHub token management not configured",
+		)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+	defer cancel()
+	username, err := h.tokenManager.ConnectGitHubCLI(ctx)
+	if err != nil {
+		helpers.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	helpers.WriteJSON(w, http.StatusOK, SetGitHubTokenResponse{GitHubUsername: username})
 }
 
 // HandleClearGitHubToken handles DELETE /api/user/github-token

@@ -34,6 +34,8 @@ type TokenObserverFunc func(statusCode int, expiresAt *time.Time)
 // Client defines the interface for GitHub API operations.
 type Client interface {
 	SetToken(ctx context.Context, token string) error
+	// SetValidatedToken applies an already verified token. An empty token disconnects.
+	SetValidatedToken(token string)
 	// SetTokenObserver registers a callback invoked once per authenticated
 	// response. Passing nil clears the observer.
 	SetTokenObserver(observer TokenObserverFunc)

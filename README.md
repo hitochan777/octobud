@@ -98,7 +98,11 @@ make build
 ./bin/octobud
 ```
 
-🎉 That's it! On macOS, Octobud will appear in your menu bar and open in your browser. On Linux and Windows, open `http://localhost:8808` manually. Connect your GitHub account using either **OAuth** or a **Personal Access Token (PAT)**. Both methods work equally well - choose OAuth for convenience, or PAT if your organization disables OAuth apps or you have multiple GitHub orgs. See the [OAuth Setup Guide](docs/guides/oauth-setup.md) or [Personal Access Token Setup Guide](docs/guides/personal-access-token-setup.md) for detailed instructions.
+On macOS, Octobud will appear in your menu bar and open in your browser. On Linux and Windows, open `http://localhost:8808` manually.
+
+If you already use [GitHub CLI](https://cli.github.com/), select **Connect with GitHub CLI** in setup or GitHub settings. It uses the active `github.com` account from `gh auth login` on this computer. Octobud remembers the account and reads its credentials from `gh` on startup.
+
+You can also connect using [GitHub OAuth](docs/guides/oauth-setup.md) or a [Personal Access Token (PAT)](docs/guides/personal-access-token-setup.md).
 
 <details>
 <summary><strong>More options</strong></summary>
@@ -133,11 +137,12 @@ Open `http://localhost:5173`
 
 When you first launch Octobud, you'll be guided through setup:
 
-1. **Connect GitHub** - You'll be prompted to connect your GitHub account. Choose either **OAuth** or a **Personal Access Token (PAT)**. Both methods work equally well:
+1. **Connect GitHub** - You'll be prompted to connect your GitHub account.
+   - **GitHub CLI** - Uses your existing `gh auth login` for `github.com`
    - **OAuth** - Convenient and secure, uses GitHub's device flow
    - **PAT** - Recommended if your organization disables OAuth apps or you have multiple GitHub orgs
    
-   Both require the following scopes:
+   For OAuth and PAT connections, the relevant scopes are:
    - `repo`
    - `notifications`
    - `read:discussions` (this permission is only required for PAT)

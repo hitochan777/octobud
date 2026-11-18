@@ -139,13 +139,16 @@ func main() {
 		frontendURL: fURL,
 	}
 
+	if runtime.GOOS != "darwin" {
+		runServer(cfg, nil, logWriter)
+		return
+	}
+
 	// Create a logger for tray operations that writes to both console and logfile
 	// This ensures tray operations and early initialization are logged for debugging
 	trayLogger := config.NewConsoleLoggerWithFile(logWriter)
 
-	// On macOS, RunWithApp blocks and runs the tray event loop on the main thread.
-	// The onReady callback runs our server logic.
-	// On other platforms, RunWithApp just calls onReady directly.
+	// RunWithApp blocks and runs the macOS tray event loop on the main thread.
 	tray.RunWithApp(cfg.frontendURL, trayLogger, func(t *tray.Tray) {
 		// Start the server in a goroutine so tray can run its event loop
 		go runServer(cfg, t, logWriter)
@@ -349,8 +352,8 @@ func runServer(cfg appConfig, trayApp *tray.Tray, logWriter *lumberjack.Logger) 
 	serveStaticFiles(router, frontendFS)
 
 	// Start server
-	addr := fmt.Sprintf(":%d", cfg.port)
-	httpServer := server.NewHTTPServer(addr, router)
+	addr := fmt.Sprintf("127.0.0.1:%d", cfg.port)
+	httpServer := server.NewHTTPServer(addr, server.RequireLocalHost(router))
 
 	// Start server in goroutine
 	serverErr := make(chan error, 1)

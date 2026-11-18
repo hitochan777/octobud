@@ -85,7 +85,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. -->
 					GitHub token is no longer valid
 				</p>
 				<p class="text-xs text-red-700 dark:text-red-300 mt-0.5">
-					Reconnect in Settings to keep syncing notifications.
+					{#if $status?.source === "gh"}
+						Run <code>gh auth login</code> and reconnect in Settings to resume notification sync.
+					{:else}
+						Reconnect in Settings to keep syncing notifications.
+					{/if}
 				</p>
 			</div>
 		</div>
@@ -127,7 +131,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>. -->
 					GitHub token expires {timeUntilLabel ?? "soon"}
 				</p>
 				<p class="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
-					Update it in Settings before it expires to avoid sync interruptions.
+					{#if $status?.source === "gh"}
+						Renew your GitHub CLI login and reconnect in Settings.
+					{:else}
+						Update it in Settings before it expires to avoid sync interruptions.
+					{/if}
 				</p>
 			</div>
 		</div>

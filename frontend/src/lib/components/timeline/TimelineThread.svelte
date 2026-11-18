@@ -40,8 +40,16 @@
 	export let onNewActivityViewed: (() => void) | undefined = undefined;
 
 	const { items, isLoading, error, pagination, hasAttemptedAutoLoad } = timelineController.stores;
-	const { autoLoadTimeline, loadTimeline, loadMoreTimeline, loadReviewComments, loadPRCommits } =
-		timelineController.actions;
+	const {
+		autoLoadTimeline,
+		loadTimeline,
+		loadMoreTimeline,
+		refreshTimeline,
+		loadReviewComments,
+		loadPRCommits,
+	} = timelineController.actions;
+
+	$: isDiscussion = subjectType.toLowerCase() === "discussion";
 
 	let hasLoaded = false;
 	const isLoadingMore = writable(false);
@@ -80,7 +88,7 @@
 	onMount(() => {
 		autoLoadDebounceTimer = setTimeout(() => {
 			if (!$hasAttemptedAutoLoad && githubId) {
-				autoLoadTimeline(githubId, 10);
+				autoLoadTimeline(githubId, 10, isDiscussion);
 				// Fire parallel fetches for PRs
 				if (subjectType === "pull_request") {
 					loadReviewComments(githubId);
@@ -88,6 +96,15 @@
 				}
 			}
 		}, 300);
+
+		if (isDiscussion) {
+			const timer = setInterval(() => {
+				if (!hasPermissionError && document.visibilityState === "visible") {
+					void refreshTimeline(githubId);
+				}
+			}, 20_000);
+			return () => clearInterval(timer);
+		}
 	});
 
 	onDestroy(() => {
@@ -101,7 +118,7 @@
 		hasLoaded = true;
 		isLoadingMore.set(true);
 		try {
-			await loadTimeline(githubId, 10);
+			await loadTimeline(githubId, 10, isDiscussion);
 			// Ensure parallel data is loaded for PRs (no-op if already fetched)
 			if (subjectType === "pull_request") {
 				loadReviewComments(githubId);

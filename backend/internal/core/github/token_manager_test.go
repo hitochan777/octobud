@@ -156,6 +156,22 @@ func TestGetTokenHealth_ExpiredReturnsInvalid(t *testing.T) {
 	}
 }
 
+func TestGetTokenHealth_CLI(t *testing.T) {
+	m, observe := newTestManager(t)
+	m.currentSource = TokenSourceCLI
+
+	soon := time.Now().Add(time.Hour)
+	observe(http.StatusOK, &soon)
+	if got := m.GetTokenHealth(); got != TokenHealthExpiring {
+		t.Fatalf("expiring CLI token should report expiring, got %q", got)
+	}
+
+	observe(http.StatusUnauthorized, nil)
+	if got := m.GetTokenHealth(); got != TokenHealthInvalid {
+		t.Fatalf("rejected CLI token should report invalid, got %q", got)
+	}
+}
+
 func TestGetTokenHealth_ExpiringWithinWindow(t *testing.T) {
 	m, observe := newTestManager(t)
 	m.currentSource = TokenSourceStored

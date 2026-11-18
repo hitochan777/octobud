@@ -17,6 +17,7 @@
 package server
 
 import (
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -88,6 +89,21 @@ func NewRouter(cfg Config) chi.Router {
 	})
 
 	return router
+}
+
+// RequireLocalHost rejects requests addressed to non-local hostnames to prevent DNS rebinding.
+func RequireLocalHost(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, err := net.SplitHostPort(r.Host)
+		if err != nil {
+			host = r.Host
+		}
+		if !strings.EqualFold(host, "localhost") && host != "127.0.0.1" {
+			http.Error(w, "Local access only", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // NewHTTPServer creates an http.Server with standard timeout configuration.

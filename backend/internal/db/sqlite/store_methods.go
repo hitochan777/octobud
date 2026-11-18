@@ -1473,6 +1473,23 @@ func (s *Store) UpdateUserGitHubIdentity(
 	return toDBUser(u), nil
 }
 
+// ConnectUserGitHubCLI records the GitHub account and authentication method.
+func (s *Store) ConnectUserGitHubCLI(
+	ctx context.Context,
+	arg db.UpdateUserGitHubIdentityParams,
+) (db.User, error) {
+	u, err := db.RetryOnBusy(ctx, func() (User, error) {
+		return s.q.ConnectUserGitHubCLI(ctx, ConnectUserGitHubCLIParams{
+			GithubUserID:   arg.GithubUserID,
+			GithubUsername: arg.GithubUsername,
+		})
+	})
+	if err != nil {
+		return db.User{}, err
+	}
+	return toDBUser(u), nil
+}
+
 // UpdateUserSyncSettings updates the sync settings for a user
 func (s *Store) UpdateUserSyncSettings(
 	ctx context.Context,

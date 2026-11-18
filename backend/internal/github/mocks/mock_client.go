@@ -207,3 +207,15 @@ func (mr *MockClientMockRecorder) SetTokenObserver(observer any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetTokenObserver", reflect.TypeOf((*MockClient)(nil).SetTokenObserver), observer)
 }
+
+// SetValidatedToken mocks base method.
+func (m *MockClient) SetValidatedToken(token string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetValidatedToken", token)
+}
+
+// SetValidatedToken indicates an expected call of SetValidatedToken.
+func (mr *MockClientMockRecorder) SetValidatedToken(token any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetValidatedToken", reflect.TypeOf((*MockClient)(nil).SetValidatedToken), token)
+}
