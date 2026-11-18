@@ -127,7 +127,7 @@ type clientImpl struct {
 	transport  *observingTransport
 	baseURL    string
 	perPage    int
-	token      string
+	token      atomic.Pointer[string]
 }
 
 // NewClient constructs an HTTP-backed GitHub client.
@@ -156,27 +156,39 @@ func (c *clientImpl) SetTokenObserver(observer githubinterfaces.TokenObserverFun
 
 // SetToken sets the GitHub token directly and validates it.
 func (c *clientImpl) SetToken(ctx context.Context, token string) error {
-	c.token = strings.TrimSpace(token)
-	if c.token == "" {
+	token = strings.TrimSpace(token)
+	if token == "" {
 		return fmt.Errorf("token cannot be empty")
 	}
 
 	// Validate the token by making a test API call
-	if err := c.validateToken(ctx); err != nil {
+	if err := c.validateToken(ctx, token); err != nil {
 		return fmt.Errorf("token validation failed: %w", err)
 	}
 
+	c.SetValidatedToken(token)
 	return nil
 }
 
+func (c *clientImpl) SetValidatedToken(token string) {
+	c.token.Store(&token)
+}
+
+func (c *clientImpl) currentToken() string {
+	if token := c.token.Load(); token != nil {
+		return *token
+	}
+	return ""
+}
+
 // validateToken makes a simple API call to verify the token works
-func (c *clientImpl) validateToken(ctx context.Context) error {
+func (c *clientImpl) validateToken(ctx context.Context, token string) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/user", http.NoBody)
 	if err != nil {
 		return err
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -218,11 +230,11 @@ func (c *clientImpl) WithPerPage(perPage int) githubinterfaces.Client {
 // GetAuthHeaders returns the authentication headers for GitHub API requests.
 // Returns an empty map if no token is configured.
 func (c *clientImpl) GetAuthHeaders() map[string]string {
-	if c.token == "" {
+	if c.currentToken() == "" {
 		return map[string]string{}
 	}
 	return map[string]string{
-		"Authorization":        "Bearer " + c.token,
+		"Authorization":        "Bearer " + c.currentToken(),
 		"Accept":               "application/vnd.github+json",
 		"X-GitHub-Api-Version": "2022-11-28",
 	}
@@ -261,7 +273,7 @@ func (c *clientImpl) fetchNotificationPage(
 		return nil, fmt.Errorf("github: create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+c.currentToken())
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -443,7 +455,7 @@ func (c *clientImpl) FetchSubjectRaw(
 		return nil, fmt.Errorf("github: create subject request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+c.currentToken())
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -490,7 +502,7 @@ func (c *clientImpl) FetchIssueComments(
 		return nil, fmt.Errorf("github: create comments request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+c.currentToken())
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -536,7 +548,7 @@ func (c *clientImpl) FetchPullRequestReviews(
 		return nil, fmt.Errorf("github: create reviews request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+c.currentToken())
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -582,7 +594,7 @@ func (c *clientImpl) FetchPullRequestComments(
 		return nil, fmt.Errorf("github: create pull comments request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+c.currentToken())
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -655,7 +667,7 @@ func (c *clientImpl) FetchTimeline(
 		return nil, 1, fmt.Errorf("github: create timeline request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+c.currentToken())
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -704,7 +716,7 @@ func (c *clientImpl) FetchPRCommits(
 		return nil, fmt.Errorf("github: create pr commits request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+c.currentToken())
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -739,7 +751,7 @@ func (c *clientImpl) FetchPRCommits(
 // /rate_limit endpoint does not itself count against the rate limit, so this is
 // safe to call on demand. Requires an authenticated token.
 func (c *clientImpl) FetchRateLimit(ctx context.Context) (*types.RateLimit, error) {
-	if c.token == "" {
+	if c.currentToken() == "" {
 		return nil, fmt.Errorf("github: no token configured")
 	}
 
@@ -748,7 +760,7 @@ func (c *clientImpl) FetchRateLimit(ctx context.Context) (*types.RateLimit, erro
 		return nil, fmt.Errorf("github: create rate limit request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+c.currentToken())
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -932,7 +944,7 @@ func (c *clientImpl) FetchDiscussionComments( //nolint:gocritic // Prefer in-lin
 		return nil, false, "", fmt.Errorf("github: create graphql request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Authorization", "Bearer "+c.currentToken())
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 

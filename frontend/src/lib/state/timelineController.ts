@@ -40,8 +40,8 @@ export interface TimelineControllerStores {
 }
 
 export interface TimelineControllerActions {
-	autoLoadTimeline: (githubId: string, perPage: number) => Promise<void>;
-	loadTimeline: (githubId: string, perPage: number) => Promise<void>;
+	autoLoadTimeline: (githubId: string, perPage: number, discussion?: boolean) => Promise<void>;
+	loadTimeline: (githubId: string, perPage: number, discussion?: boolean) => Promise<void>;
 	loadMoreTimeline: (githubId: string, perPage: number) => Promise<void>;
 	refreshTimeline: (githubId: string, perPage?: number) => Promise<void>;
 	loadReviewComments: (githubId: string) => Promise<void>;
@@ -70,6 +70,7 @@ export function createTimelineController(): TimelineController {
 	const hasAttemptedAutoLoad = writable<boolean>(false);
 
 	let currentGithubId: string | null = null;
+	let isDiscussion = false;
 
 	// AbortController for the current load session. Cancels in-flight fetches
 	// when the user navigates to a different notification or closes detail,
@@ -161,11 +162,16 @@ export function createTimelineController(): TimelineController {
 		}
 	}
 
-	async function autoLoadTimeline(githubId: string, perPage: number = 10): Promise<void> {
+	async function autoLoadTimeline(
+		githubId: string,
+		perPage: number = 10,
+		discussion: boolean = false
+	): Promise<void> {
 		// Mark that we've attempted auto-load
 		hasAttemptedAutoLoad.set(true);
 
 		currentGithubId = githubId;
+		isDiscussion = discussion;
 		const signal = startSession();
 		isLoading.set(true);
 		error.set(null);
@@ -212,9 +218,14 @@ export function createTimelineController(): TimelineController {
 		}
 	}
 
-	async function loadTimeline(githubId: string, perPage: number = 10): Promise<void> {
+	async function loadTimeline(
+		githubId: string,
+		perPage: number = 10,
+		discussion: boolean = false
+	): Promise<void> {
 		hasAttemptedAutoLoad.set(true);
 		currentGithubId = githubId;
+		isDiscussion = discussion;
 		const signal = startSession();
 		isLoading.set(true);
 		error.set(null);
@@ -320,34 +331,50 @@ export function createTimelineController(): TimelineController {
 	}
 
 	/**
-	 * Silently refresh the timeline by fetching page 1 and appending any new items.
-	 * Used when polling detects the notification was updated while the timeline is open.
+	 * Refresh an open timeline in the background.
 	 * Does not show loading state — this is a background refresh.
 	 *
 	 * Uses a guard to prevent concurrent calls (the direct handler and the reactive
 	 * effectiveSortDate block can both trigger this for the same update).
 	 */
-	let refreshInProgress = false;
+	let refreshSignal: AbortSignal | null = null;
 
 	async function refreshTimeline(githubId: string, perPage: number = 10): Promise<void> {
-		if (refreshInProgress) return;
-
-		const currentItems = get(items);
-		if (currentItems.length === 0) return; // Don't refresh before initial load
-
-		refreshInProgress = true;
 		const signal = currentController?.signal;
+		const { page } = get(pagination);
+		if (!signal || signal === refreshSignal || currentGithubId !== githubId || page === 0) {
+			return;
+		}
+		if (!isDiscussion && get(items).length === 0) return;
+
+		refreshSignal = signal;
 		try {
 			const response: NotificationTimelineResponse = await fetchNotificationTimeline(
 				githubId,
-				perPage,
+				// The server already fetches the latest 100 Discussion comments from
+				// GitHub. Request the whole window so replies on older loaded pages update.
+				isDiscussion ? 100 : perPage,
 				1,
 				undefined,
 				signal
 			);
 
-			// Abort if githubId changed while loading
-			if (currentGithubId !== githubId) return;
+			if (signal.aborted) return;
+
+			if (isDiscussion) {
+				const visible = get(items);
+				const paging = get(pagination);
+				const oldestKey = visible.length ? itemKey(visible[0]) : null;
+				const oldestIndex = response.items.findIndex((item) => itemKey(item) === oldestKey);
+				const count = Math.max(paging.page * paging.perPage, oldestIndex + 1);
+				items.set(response.items.slice(0, count).reverse());
+				pagination.set({
+					...paging,
+					total: response.total,
+					hasMore: count < response.items.length,
+				});
+				return;
+			}
 
 			// Reverse to match oldest-first display order
 			const reversedNewItems = [...response.items].reverse();
@@ -388,7 +415,7 @@ export function createTimelineController(): TimelineController {
 				console.error("[TimelineController] Failed to refresh timeline:", err);
 			}
 		} finally {
-			refreshInProgress = false;
+			if (refreshSignal === signal) refreshSignal = null;
 		}
 	}
 
@@ -466,7 +493,8 @@ export function createTimelineController(): TimelineController {
 		});
 		hasAttemptedAutoLoad.set(false);
 		currentGithubId = null;
-		refreshInProgress = false;
+		isDiscussion = false;
+		refreshSignal = null;
 		reviewCommentsData = null;
 		commitAuthorsData = null;
 	}

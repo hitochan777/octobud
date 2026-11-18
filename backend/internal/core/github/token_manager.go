@@ -47,6 +47,8 @@ const (
 	TokenSourceStored TokenSource = "stored"
 	// TokenSourceOAuth indicates the token was obtained via OAuth flow.
 	TokenSourceOAuth TokenSource = "oauth"
+	// TokenSourceCLI indicates that GitHub CLI owns the credentials.
+	TokenSourceCLI TokenSource = "gh"
 )
 
 // Status represents the current GitHub connection status
@@ -88,6 +90,7 @@ type TokenManager struct {
 	authService  AuthService
 	httpClient   *http.Client
 	logger       *zap.Logger
+	readCLIToken func(context.Context, string) (string, error)
 
 	// Current state
 	currentToken   string
@@ -143,6 +146,7 @@ func NewTokenManager(
 		githubClient: githubClient,
 		authService:  authService,
 		logger:       logger,
+		readCLIToken: readGitHubCLIToken,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
 		},
@@ -205,6 +209,10 @@ func (m *TokenManager) Initialize(ctx context.Context) error {
 	user, err := m.store.GetUser(ctx)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("failed to get user: %w", err)
+	}
+
+	if user.GithubCLIAuth {
+		return m.restoreGitHubCLI(ctx, user)
 	}
 
 	// On macOS, try to load from keychain first
@@ -291,7 +299,8 @@ func (m *TokenManager) StartKeychainRecovery(ctx context.Context) {
 	}
 
 	user, err := m.store.GetUser(ctx)
-	if err != nil || !user.GithubUsername.Valid || user.GithubUsername.String == "" {
+	if err != nil || user.GithubCLIAuth || !user.GithubUsername.Valid ||
+		user.GithubUsername.String == "" {
 		return
 	}
 
@@ -389,10 +398,15 @@ func (m *TokenManager) GetStatus() Status {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	maskedToken := ""
+	if m.currentSource != TokenSourceCLI {
+		maskedToken = xcrypto.MaskToken(m.currentToken)
+	}
+
 	return Status{
 		Connected:      m.currentSource != TokenSourceNone,
 		Source:         m.currentSource,
-		MaskedToken:    xcrypto.MaskToken(m.currentToken),
+		MaskedToken:    maskedToken,
 		GitHubUsername: m.githubUsername,
 		GitHubUserID:   m.githubUserID,
 	}
@@ -416,6 +430,9 @@ func (m *TokenManager) GetStatusSource() string {
 func (m *TokenManager) GetStatusMaskedToken() string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	if m.currentSource == TokenSourceCLI {
+		return ""
+	}
 	return xcrypto.MaskToken(m.currentToken)
 }
 
@@ -494,6 +511,8 @@ func (m *TokenManager) IsConnected() bool {
 // Returns the GitHub username associated with the token.
 func (m *TokenManager) SetToken(ctx context.Context, token string) (string, error) {
 	m.stopRecovery()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -568,13 +587,11 @@ func (m *TokenManager) SetToken(ctx context.Context, token string) (string, erro
 	}
 
 	// Update internal state (resetHealth uses healthMu — independent of mu).
-	m.mu.Lock()
 	m.currentToken = token
 	m.currentSource = TokenSourceStored
 	m.githubUsername = username
 	m.githubUserID = userID
 	m.resetHealth()
-	m.mu.Unlock()
 	return username, nil
 }
 
@@ -582,6 +599,8 @@ func (m *TokenManager) SetToken(ctx context.Context, token string) (string, erro
 // Returns the GitHub username associated with the token.
 func (m *TokenManager) SetTokenFromOAuth(ctx context.Context, token string) (string, error) {
 	m.stopRecovery()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -657,13 +676,11 @@ func (m *TokenManager) SetTokenFromOAuth(ctx context.Context, token string) (str
 
 	// Update internal state - mark as OAuth source.
 	// (resetHealth uses healthMu — independent of mu.)
-	m.mu.Lock()
 	m.currentToken = token
 	m.currentSource = TokenSourceOAuth
 	m.githubUsername = username
 	m.githubUserID = userID
 	m.resetHealth()
-	m.mu.Unlock()
 
 	return username, nil
 }
@@ -715,6 +732,7 @@ func (m *TokenManager) ClearToken(ctx context.Context) error {
 	}
 
 	// Clear internal state
+	m.githubClient.SetValidatedToken("")
 	m.currentToken = ""
 	m.currentSource = TokenSourceNone
 	m.githubUsername = ""

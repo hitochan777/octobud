@@ -19,13 +19,23 @@ WHERE id = 1 RETURNING *;
 UPDATE users SET sync_settings = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = 1 RETURNING *;
 
 -- name: UpdateUserGitHubToken :one
-UPDATE users SET github_token_encrypted = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = 1 RETURNING *;
+UPDATE users SET github_token_encrypted = ?, github_cli_auth = FALSE, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = 1 RETURNING *;
+
+-- name: ConnectUserGitHubCLI :one
+UPDATE users SET
+    github_user_id = ?,
+    github_username = ?,
+    github_token_encrypted = NULL,
+    github_cli_auth = TRUE,
+    updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+WHERE id = 1 RETURNING *;
 
 -- name: ClearUserGitHubToken :one
 UPDATE users SET 
     github_token_encrypted = NULL, 
     github_user_id = NULL,
     github_username = NULL,
+    github_cli_auth = FALSE,
     updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') 
 WHERE id = 1 RETURNING *;
 

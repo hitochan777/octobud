@@ -191,6 +191,7 @@ type User struct {
 	RetentionSettings    sql.NullString
 	MutedUntil           sql.NullString
 	UpdateSettings       sql.NullString
+	GithubCliAuth        bool
 }
 
 type View struct {

@@ -209,6 +209,7 @@ type User struct {
 	GithubUserID         sql.NullString
 	GithubUsername       sql.NullString
 	GithubTokenEncrypted sql.NullString
+	GithubCLIAuth        bool
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	SyncSettings         NullRawMessage

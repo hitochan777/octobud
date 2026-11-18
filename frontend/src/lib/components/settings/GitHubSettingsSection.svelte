@@ -17,6 +17,7 @@
 	import { onMount } from "svelte";
 	import {
 		getGitHubStatus,
+		connectGitHubCLI,
 		setGitHubToken,
 		clearGitHubToken,
 		type GitHubStatus,
@@ -28,6 +29,7 @@
 	let status: GitHubStatus | null = null;
 	let isLoading = true;
 	let isConnectingOAuth = false;
+	let isConnectingCLI = false;
 	let oauthUserCode = "";
 	let isClearing = false;
 	let showConfirmDialog = false;
@@ -53,6 +55,21 @@
 	onMount(() => {
 		loadStatus();
 	});
+
+	async function handleConnectWithCLI() {
+		error = "";
+		isConnectingCLI = true;
+		try {
+			const { githubUsername } = await connectGitHubCLI();
+			await loadStatus();
+			showTokenUpdate = false;
+			toastStore.success(`Connected to GitHub as ${githubUsername}`);
+		} catch (err) {
+			error = err instanceof Error ? err.message : "Failed to connect with GitHub CLI";
+		} finally {
+			isConnectingCLI = false;
+		}
+	}
 
 	async function handleConnectWithGitHub() {
 		error = "";
@@ -159,7 +176,9 @@
 			? "Connected via GitHub"
 			: status?.source === "stored"
 				? "Connected via token"
-				: "";
+				: status?.source === "gh"
+					? "Connected via GitHub CLI"
+					: "";
 </script>
 
 <div>
@@ -219,7 +238,7 @@
 			</div>
 
 			<div class="mt-4 flex justify-end items-center gap-4">
-				{#if status.source === "stored" || status.source === "oauth"}
+				{#if status.source !== "none"}
 					<button
 						type="button"
 						on:click={handleDisconnectClick}
@@ -308,12 +327,26 @@
 					</div>
 				{/if}
 
+				<div class="text-center">
+					<button
+						type="button"
+						on:click={handleConnectWithCLI}
+						disabled={isUpdating || isConnectingCLI}
+						class="w-full rounded-xl border border-gray-300 px-6 py-3 text-sm font-semibold text-gray-900 hover:bg-gray-100 disabled:opacity-50 dark:border-gray-700 dark:text-white dark:hover:bg-gray-800"
+					>
+						{isConnectingCLI ? "Connecting..." : "Connect with GitHub CLI"}
+					</button>
+					<p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+						Use an existing <code>gh auth login</code> on this computer.
+					</p>
+				</div>
+
 				<!-- PAT option (Recommended) -->
 				<div>
 					<button
 						type="button"
 						on:click={() => (showPatInput = !showPatInput)}
-						disabled={isUpdating || isConnectingOAuth}
+						disabled={isUpdating || isConnectingOAuth || isConnectingCLI}
 						class="w-full inline-flex items-center justify-center gap-3 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm hover:shadow-md"
 					>
 						<svg
@@ -401,7 +434,7 @@
 								<button
 									type="button"
 									on:click={handleSetToken}
-									disabled={isUpdating || !tokenInput.trim()}
+									disabled={isUpdating || isConnectingCLI || !tokenInput.trim()}
 									class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
 								>
 									{#if isUpdating}
@@ -445,7 +478,7 @@
 					<button
 						type="button"
 						on:click={handleConnectWithGitHub}
-						disabled={isUpdating || isConnectingOAuth}
+						disabled={isUpdating || isConnectingOAuth || isConnectingCLI}
 						class="w-full inline-flex items-center justify-center gap-3 rounded-xl bg-gray-900 dark:bg-white px-6 py-3 text-sm font-semibold text-white dark:text-gray-900 transition-all hover:bg-gray-800 dark:hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm hover:shadow-md"
 					>
 						<svg
@@ -486,7 +519,7 @@
 <ConfirmDialog
 	open={showConfirmDialog}
 	title="Disconnect from GitHub?"
-	body="Are you sure you want to disconnect from GitHub? You will need to enter a new token to sync notifications."
+	body="Octobud will pause notification sync until you reconnect to GitHub."
 	confirmLabel="Disconnect"
 	cancelLabel="Cancel"
 	confirming={isClearing}

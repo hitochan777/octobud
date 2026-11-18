@@ -270,6 +270,7 @@ type Store interface {
 	GetUser(ctx context.Context) (User, error)
 	CreateUser(ctx context.Context) (User, error)
 	UpdateUserGitHubIdentity(ctx context.Context, arg UpdateUserGitHubIdentityParams) (User, error)
+	ConnectUserGitHubCLI(ctx context.Context, arg UpdateUserGitHubIdentityParams) (User, error)
 	UpdateUserSyncSettings(ctx context.Context, syncSettings NullRawMessage) (User, error)
 	UpdateUserGitHubToken(ctx context.Context, githubTokenEncrypted sql.NullString) (User, error)
 	ClearUserGitHubToken(ctx context.Context) (User, error)

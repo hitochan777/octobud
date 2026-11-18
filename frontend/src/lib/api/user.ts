@@ -167,7 +167,7 @@ export type GitHubTokenHealth = "ok" | "expiring" | "invalid";
 
 export interface GitHubStatus {
 	connected: boolean;
-	source: "none" | "stored" | "oauth";
+	source: "none" | "stored" | "oauth" | "gh";
 	maskedToken?: string;
 	githubUsername?: string;
 	tokenHealth?: GitHubTokenHealth;
@@ -193,6 +193,15 @@ export async function getGitHubStatus(fetchImpl?: typeof fetch): Promise<GitHubS
 
 export interface SetGitHubTokenResponse {
 	githubUsername: string;
+}
+
+export async function connectGitHubCLI(): Promise<SetGitHubTokenResponse> {
+	const response = await fetchAPI("/api/user/github-cli", { method: "PUT" });
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({}));
+		throw new Error(error.error || "Failed to connect with GitHub CLI");
+	}
+	return response.json();
 }
 
 export async function setGitHubToken(

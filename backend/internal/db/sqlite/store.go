@@ -338,6 +338,7 @@ func toDBUser(u User) db.User {
 		GithubUserID:         u.GithubUserID,
 		GithubUsername:       u.GithubUsername,
 		GithubTokenEncrypted: u.GithubTokenEncrypted,
+		GithubCLIAuth:        u.GithubCliAuth,
 		CreatedAt:            parseTime(u.CreatedAt),
 		UpdatedAt:            parseTime(u.UpdatedAt),
 		SyncSettings:         toNullRawMessage(u.SyncSettings),

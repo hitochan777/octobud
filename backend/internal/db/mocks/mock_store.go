@@ -402,6 +402,21 @@ func (mr *MockStoreMockRecorder) ClearUserGitHubToken(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearUserGitHubToken", reflect.TypeOf((*MockStore)(nil).ClearUserGitHubToken), ctx)
 }
 
+// ConnectUserGitHubCLI mocks base method.
+func (m *MockStore) ConnectUserGitHubCLI(ctx context.Context, arg db.UpdateUserGitHubIdentityParams) (db.User, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConnectUserGitHubCLI", ctx, arg)
+	ret0, _ := ret[0].(db.User)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConnectUserGitHubCLI indicates an expected call of ConnectUserGitHubCLI.
+func (mr *MockStoreMockRecorder) ConnectUserGitHubCLI(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConnectUserGitHubCLI", reflect.TypeOf((*MockStore)(nil).ConnectUserGitHubCLI), ctx, arg)
+}
+
 // CountEligibleForCleanup mocks base method.
 func (m *MockStore) CountEligibleForCleanup(ctx context.Context, userID string, params db.CleanupParams) (int64, error) {
 	m.ctrl.T.Helper()

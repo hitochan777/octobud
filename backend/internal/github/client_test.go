@@ -113,7 +113,7 @@ func TestSetToken(t *testing.T) {
 				}
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tt.token, client.token)
+				require.Equal(t, tt.token, client.currentToken())
 			}
 		})
 	}
@@ -143,7 +143,8 @@ func TestGetAuthHeaders(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &clientImpl{token: tt.token}
+			client := &clientImpl{}
+			client.SetValidatedToken(tt.token)
 			result := client.GetAuthHeaders()
 			require.Equal(t, tt.expected, result)
 		})
@@ -288,7 +289,7 @@ func TestFetchNotifications(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(server.URL)
-			client.token = testToken
+			client.SetValidatedToken(testToken)
 
 			notifications, err := client.FetchNotifications(
 				context.Background(),
@@ -398,7 +399,7 @@ func TestFetchNotifications_GatewayErrorRetry(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(server.URL)
-			client.token = testToken
+			client.SetValidatedToken(testToken)
 			client.perPage = tt.initialPerPage
 
 			notifications, err := client.FetchNotifications(
@@ -456,7 +457,7 @@ func TestFetchNotifications_GatewayErrorProgressiveRetry(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(server.URL)
-	client.token = testToken
+	client.SetValidatedToken(testToken)
 	client.perPage = 50 // Start with large size
 
 	notifications, err := client.FetchNotifications(
@@ -500,7 +501,7 @@ func TestFetchNotifications_GatewayErrorRetryFailsAtMinimum(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(server.URL)
-	client.token = testToken
+	client.SetValidatedToken(testToken)
 	client.perPage = 10 // Start at minimum
 
 	notifications, err := client.FetchNotifications(
@@ -626,7 +627,7 @@ func TestFetchNotifications_GatewayErrorMidPagination(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(server.URL)
-	client.token = testToken
+	client.SetValidatedToken(testToken)
 	client.perPage = 50
 
 	notifications, err := client.FetchNotifications(
@@ -679,7 +680,7 @@ func TestFetchNotifications_Pagination(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(server.URL)
-	client.token = testToken
+	client.SetValidatedToken(testToken)
 	client.perPage = 2 // Set perPage to match our test data
 
 	notifications, err := client.FetchNotifications(context.Background(), nil, nil, false)
@@ -703,7 +704,7 @@ func TestFetchNotifications_RawFieldPopulated(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(server.URL)
-	client.token = testToken
+	client.SetValidatedToken(testToken)
 
 	notifications, err := client.FetchNotifications(context.Background(), nil, nil, false)
 
@@ -749,7 +750,7 @@ func TestFetchNotifications_UnreadOnlyParameter(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(server.URL)
-			client.token = testToken
+			client.SetValidatedToken(testToken)
 
 			_, err := client.FetchNotifications(context.Background(), nil, nil, tt.unreadOnly)
 			require.NoError(t, err)
@@ -803,7 +804,7 @@ func TestFetchNotifications_BeforeParameter(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(server.URL)
-			client.token = testToken
+			client.SetValidatedToken(testToken)
 
 			_, err := client.FetchNotifications(context.Background(), nil, tt.before, false)
 			require.NoError(t, err)
@@ -879,7 +880,7 @@ func TestFetchSubjectRaw(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(server.URL)
-			client.token = testToken
+			client.SetValidatedToken(testToken)
 
 			var url string
 			if tt.subjectURL != "" && tt.subjectURL != "   " {
@@ -967,7 +968,7 @@ func TestFetchSubjectRaw_RetryHeaders(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(server.URL)
-			client.token = testToken
+			client.SetValidatedToken(testToken)
 
 			_, err := client.FetchSubjectRaw(context.Background(), server.URL+"/test")
 			require.Error(t, err)
@@ -1082,7 +1083,7 @@ func TestFetchIssueComments(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(server.URL)
-			client.token = testToken
+			client.SetValidatedToken(testToken)
 
 			comments, err := client.FetchIssueComments(
 				context.Background(),
@@ -1190,7 +1191,7 @@ func TestFetchPullRequestReviews(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(server.URL)
-			client.token = testToken
+			client.SetValidatedToken(testToken)
 
 			reviews, err := client.FetchPullRequestReviews(
 				context.Background(),
@@ -1302,7 +1303,7 @@ func TestFetchPullRequestComments(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(server.URL)
-			client.token = testToken
+			client.SetValidatedToken(testToken)
 
 			comments, err := client.FetchPullRequestComments(
 				context.Background(),
@@ -1411,7 +1412,7 @@ func TestFetchTimeline(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(server.URL)
-			client.token = testToken
+			client.SetValidatedToken(testToken)
 
 			timeline, _, err := client.FetchTimeline(
 				context.Background(),
@@ -1451,7 +1452,7 @@ func TestFetchTimeline_EventTypes(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(server.URL)
-	client.token = testToken
+	client.SetValidatedToken(testToken)
 
 	timeline, _, err := client.FetchTimeline(context.Background(), "owner", "repo", 1, 100, 1)
 
@@ -1501,7 +1502,7 @@ func TestFetchNotifications_ContextCancellation(t *testing.T) {
 	defer server.Close()
 
 	client := newTestClient(server.URL)
-	client.token = testToken
+	client.SetValidatedToken(testToken)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
@@ -1596,7 +1597,7 @@ func TestRequestHeaders(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(server.URL)
-			client.token = testToken
+			client.SetValidatedToken(testToken)
 
 			err := tt.fetchMethod(client, server)
 			require.NoError(t, err)
@@ -1715,7 +1716,7 @@ func TestFetchPRCommits(t *testing.T) {
 			defer server.Close()
 
 			client := newTestClient(server.URL)
-			client.token = testToken
+			client.SetValidatedToken(testToken)
 
 			commits, err := client.FetchPRCommits(
 				context.Background(),
