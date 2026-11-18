@@ -132,11 +132,36 @@ func TestConnectGitHubCLI(t *testing.T) {
 
 func TestRestoreGitHubCLIRenamedAccount(t *testing.T) {
 	for _, test := range []struct {
-		name string
-		id   string
+		name          string
+		id            string
+		savedLogin    bool
+		newLogin      bool
+		updateLogin   bool
+		expectedCalls []string
 	}{
-		{name: "same account after rename", id: "42"},
-		{name: "different active account", id: "43"},
+		{
+			name:          "gh still stores the original login",
+			id:            "42",
+			savedLogin:    true,
+			expectedCalls: []string{"old-login"},
+		},
+		{
+			name:          "same account signed into gh under its new name",
+			id:            "42",
+			newLogin:      true,
+			updateLogin:   true,
+			expectedCalls: []string{"old-login", "", "new-login"},
+		},
+		{
+			name:          "active credential exists but cannot be retrieved by the new name",
+			id:            "42",
+			expectedCalls: []string{"old-login", "", "new-login"},
+		},
+		{
+			name:          "different active account",
+			id:            "43",
+			expectedCalls: []string{"old-login", ""},
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := context.Background()
@@ -155,10 +180,19 @@ func TestRestoreGitHubCLIRenamedAccount(t *testing.T) {
 			var lookups []string
 			manager.readCLIToken = func(_ context.Context, username string) (string, error) {
 				lookups = append(lookups, username)
-				if username != "" {
-					return "", errors.New("no saved CLI credential for that login")
+				switch username {
+				case "old-login":
+					if test.savedLogin {
+						return "cli-test-token", nil
+					}
+				case "new-login":
+					if test.newLogin {
+						return "cli-test-token", nil
+					}
+				case "":
+					return "cli-test-token", nil
 				}
-				return "cli-test-token", nil
+				return "", errors.New("no saved CLI credential for that login")
 			}
 			manager.httpClient = &http.Client{
 				Transport: cliTestTransport(func(r *http.Request) (*http.Response, error) {
@@ -172,11 +206,13 @@ func TestRestoreGitHubCLIRenamedAccount(t *testing.T) {
 				}),
 			}
 
-			if test.id == "42" {
+			if test.updateLogin {
 				store.EXPECT().UpdateUserGitHubIdentity(ctx, db.UpdateUserGitHubIdentityParams{
 					GithubUserID:   user.GithubUserID,
 					GithubUsername: sql.NullString{String: "new-login", Valid: true},
 				}).Return(db.User{}, nil)
+			}
+			if test.id == "42" {
 				client.EXPECT().SetValidatedToken("cli-test-token")
 				require.NoError(t, manager.Initialize(ctx))
 				require.Equal(t, "new-login", manager.GetStatusGitHubUsername())
@@ -184,7 +220,7 @@ func TestRestoreGitHubCLIRenamedAccount(t *testing.T) {
 				require.ErrorContains(t, manager.Initialize(ctx), "connected account are unavailable")
 				require.False(t, manager.IsConnected())
 			}
-			require.Equal(t, []string{"old-login", ""}, lookups)
+			require.Equal(t, test.expectedCalls, lookups)
 		})
 	}
 }

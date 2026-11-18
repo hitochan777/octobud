@@ -107,10 +107,12 @@ func (m *TokenManager) ConnectGitHubCLI(ctx context.Context) (string, error) {
 }
 
 func (m *TokenManager) restoreGitHubCLI(ctx context.Context, user db.User) error {
-	token, err := m.readCLIToken(ctx, user.GithubUsername.String)
-	if err != nil && user.GithubUsername.String != "" && ctx.Err() == nil {
+	lookupUsername := user.GithubUsername.String
+	token, err := m.readCLIToken(ctx, lookupUsername)
+	if err != nil && lookupUsername != "" && ctx.Err() == nil {
 		// A renamed account may only be available under the active CLI login.
-		token, err = m.readCLIToken(ctx, "")
+		lookupUsername = ""
+		token, err = m.readCLIToken(ctx, lookupUsername)
 	}
 	if err != nil {
 		return err
@@ -119,13 +121,17 @@ func (m *TokenManager) restoreGitHubCLI(ctx context.Context, user db.User) error
 	if err != nil || !user.GithubUserID.Valid || user.GithubUserID.String != userID {
 		return errors.New("GitHub CLI credentials for the connected account are unavailable")
 	}
-	if user.GithubUsername.String != username {
-		_, err = m.store.UpdateUserGitHubIdentity(ctx, db.UpdateUserGitHubIdentityParams{
-			GithubUserID:   user.GithubUserID,
-			GithubUsername: sql.NullString{String: username, Valid: true},
-		})
-		if err != nil {
-			return fmt.Errorf("update GitHub CLI account name: %w", err)
+	// Keep a working CLI lookup. GitHub may report a new name before gh stores it.
+	if lookupUsername == "" && user.GithubUsername.String != username {
+		namedToken, lookupErr := m.readCLIToken(ctx, username)
+		if lookupErr == nil && namedToken == token {
+			_, err = m.store.UpdateUserGitHubIdentity(ctx, db.UpdateUserGitHubIdentityParams{
+				GithubUserID:   user.GithubUserID,
+				GithubUsername: sql.NullString{String: username, Valid: true},
+			})
+			if err != nil {
+				return fmt.Errorf("update GitHub CLI account name: %w", err)
+			}
 		}
 	}
 	m.applyCLIToken(token, userID, username)
