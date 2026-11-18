@@ -5,6 +5,7 @@ package github
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -125,6 +126,65 @@ func TestConnectGitHubCLI(t *testing.T) {
 			client.EXPECT().SetValidatedToken("")
 			require.NoError(t, restore.ClearToken(ctx))
 			require.False(t, restore.IsConnected())
+		})
+	}
+}
+
+func TestRestoreGitHubCLIRenamedAccount(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		id   string
+	}{
+		{name: "same account after rename", id: "42"},
+		{name: "different active account", id: "43"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			ctrl := gomock.NewController(t)
+			store := dbmocks.NewMockStore(ctrl)
+			client := githubmocks.NewMockClient(ctrl)
+			client.EXPECT().SetTokenObserver(gomock.Any())
+
+			user := db.User{
+				GithubCLIAuth:  true,
+				GithubUserID:   sql.NullString{String: "42", Valid: true},
+				GithubUsername: sql.NullString{String: "old-login", Valid: true},
+			}
+			store.EXPECT().GetUser(ctx).Return(user, nil)
+			manager := NewTokenManager(store, nil, nil, client, nil, zap.NewNop())
+			var lookups []string
+			manager.readCLIToken = func(_ context.Context, username string) (string, error) {
+				lookups = append(lookups, username)
+				if username != "" {
+					return "", errors.New("no saved CLI credential for that login")
+				}
+				return "cli-test-token", nil
+			}
+			manager.httpClient = &http.Client{
+				Transport: cliTestTransport(func(r *http.Request) (*http.Response, error) {
+					require.Equal(t, "/user", r.URL.Path)
+					require.Equal(t, "Bearer cli-test-token", r.Header.Get("Authorization"))
+					body := `{"id":` + test.id + `,"login":"new-login"}`
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Body:       io.NopCloser(strings.NewReader(body)),
+					}, nil
+				}),
+			}
+
+			if test.id == "42" {
+				store.EXPECT().UpdateUserGitHubIdentity(ctx, db.UpdateUserGitHubIdentityParams{
+					GithubUserID:   user.GithubUserID,
+					GithubUsername: sql.NullString{String: "new-login", Valid: true},
+				}).Return(db.User{}, nil)
+				client.EXPECT().SetValidatedToken("cli-test-token")
+				require.NoError(t, manager.Initialize(ctx))
+				require.Equal(t, "new-login", manager.GetStatusGitHubUsername())
+			} else {
+				require.ErrorContains(t, manager.Initialize(ctx), "connected account are unavailable")
+				require.False(t, manager.IsConnected())
+			}
+			require.Equal(t, []string{"old-login", ""}, lookups)
 		})
 	}
 }

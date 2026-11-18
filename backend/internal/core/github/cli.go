@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/octobud-hq/octobud/backend/internal/db"
+	"github.com/octobud-hq/octobud/backend/internal/xcrypto"
 	"go.uber.org/zap"
 )
 
@@ -76,6 +77,16 @@ func (m *TokenManager) ConnectGitHubCLI(ctx context.Context) (string, error) {
 	if accessErr := m.checkCLINotifications(ctx, token); accessErr != nil {
 		return "", accessErr
 	}
+	var previousUsername string
+	if m.keychain != nil && runtime.GOOS == darwinOS {
+		previousUser, getErr := m.store.GetUser(ctx)
+		if getErr != nil {
+			return "", fmt.Errorf("read previous GitHub connection: %w", getErr)
+		}
+		if !previousUser.GithubCLIAuth && previousUser.GithubUsername.Valid {
+			previousUsername = previousUser.GithubUsername.String
+		}
+	}
 	_, err = m.store.ConnectUserGitHubCLI(ctx, db.UpdateUserGitHubIdentityParams{
 		GithubUserID:   sql.NullString{String: userID, Valid: true},
 		GithubUsername: sql.NullString{String: username, Valid: true},
@@ -85,17 +96,37 @@ func (m *TokenManager) ConnectGitHubCLI(ctx context.Context) (string, error) {
 	}
 	m.stopRecovery()
 	m.applyCLIToken(token, userID, username)
+	if previousUsername != "" {
+		account := xcrypto.GetKeychainAccount(previousUsername)
+		if deleteErr := m.keychain.DeleteToken("io.octobud", account); deleteErr != nil {
+			m.logger.Warn("failed to delete Octobud keychain token when switching to GitHub CLI",
+				zap.String("username", previousUsername), zap.Error(deleteErr))
+		}
+	}
 	return username, nil
 }
 
 func (m *TokenManager) restoreGitHubCLI(ctx context.Context, user db.User) error {
 	token, err := m.readCLIToken(ctx, user.GithubUsername.String)
+	if err != nil && user.GithubUsername.String != "" && ctx.Err() == nil {
+		// A renamed account may only be available under the active CLI login.
+		token, err = m.readCLIToken(ctx, "")
+	}
 	if err != nil {
 		return err
 	}
 	userID, username, err := m.validateAndGetUser(ctx, token)
-	if err != nil || user.GithubUserID.String != userID {
+	if err != nil || !user.GithubUserID.Valid || user.GithubUserID.String != userID {
 		return errors.New("GitHub CLI credentials for the connected account are unavailable")
+	}
+	if user.GithubUsername.String != username {
+		_, err = m.store.UpdateUserGitHubIdentity(ctx, db.UpdateUserGitHubIdentityParams{
+			GithubUserID:   user.GithubUserID,
+			GithubUsername: sql.NullString{String: username, Valid: true},
+		})
+		if err != nil {
+			return fmt.Errorf("update GitHub CLI account name: %w", err)
+		}
 	}
 	m.applyCLIToken(token, userID, username)
 	return nil

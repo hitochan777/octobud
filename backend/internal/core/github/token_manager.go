@@ -419,7 +419,7 @@ func (m *TokenManager) GetStatusConnected() bool {
 	return m.currentSource != TokenSourceNone
 }
 
-// GetStatusSource returns the source of the current token ("none", "stored", or "oauth")
+// GetStatusSource returns the source of the current token.
 func (m *TokenManager) GetStatusSource() string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -463,16 +463,13 @@ func (m *TokenManager) GetTokenExpiresAt() *time.Time {
 	return &t
 }
 
-// GetTokenHealth classifies the current token's usability. Only evaluated for
-// stored PATs — OAuth tokens expire on a short cycle and are refreshed
-// automatically, so surfacing expiration/invalidation to the user isn't
-// actionable. Returns TokenHealthOK for any non-PAT source (disconnected state
-// is surfaced separately via Connected=false).
+// GetTokenHealth classifies the usability of PAT and GitHub CLI credentials.
+// OAuth refreshes automatically, and disconnected state is surfaced separately.
 func (m *TokenManager) GetTokenHealth() TokenHealth {
 	m.mu.RLock()
 	source := m.currentSource
 	m.mu.RUnlock()
-	if source != TokenSourceStored {
+	if source != TokenSourceStored && source != TokenSourceCLI {
 		return TokenHealthOK
 	}
 

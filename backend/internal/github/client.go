@@ -170,6 +170,7 @@ func (c *clientImpl) SetToken(ctx context.Context, token string) error {
 	return nil
 }
 
+// SetValidatedToken applies a verified token or clears it when empty.
 func (c *clientImpl) SetValidatedToken(token string) {
 	c.token.Store(&token)
 }
